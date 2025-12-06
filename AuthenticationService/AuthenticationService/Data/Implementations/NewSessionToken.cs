@@ -5,12 +5,12 @@ namespace AuthenticationService.Data.Implementations;
 
 internal sealed record NewSessionToken : INewSessionTokenProvider
 {
-    private readonly string _Token;
+    private readonly byte[] _Token;
 
     public NewSessionToken()
     {
-        _Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+        _Token = RandomNumberGenerator.GetBytes(64);
     }
 
-    string INewSessionTokenProvider.Token => _Token;
+    byte[] INewSessionTokenProvider.Token => _Token;
 }

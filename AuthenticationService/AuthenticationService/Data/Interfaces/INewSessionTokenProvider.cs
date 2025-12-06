@@ -2,5 +2,5 @@
 
 internal interface INewSessionTokenProvider
 {
-    string Token { get; }
+    byte[] Token { get; }
 }

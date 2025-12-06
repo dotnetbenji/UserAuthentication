@@ -4,7 +4,6 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using System.Text;
 using System.Security.Cryptography;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -78,14 +77,12 @@ app.MapPost("/login", async (LoginRequest request, SqlConnection db, INewSession
     if (user == null)
         return Results.Unauthorized();
 
-    return Results.Ok(user);
-
     await db.ExecuteAsync(
-        "INSERT INTO Sessions (UserId, Token, ExpiresAt) VALUES (@UserId, @Token, DATEADD(hour, 12, GETUTCDATE()))",
-        new { UserId = user.UserId, Token = newSessionTokenProvider.Token }
+        "INSERT INTO Sessions (UserId, Token, ExpiresAt) VALUES (@UserId, @Token, @ExpiresAt)",
+        new { UserId = user.UserId, Token = newSessionTokenProvider.Token, ExpiresAt = DateTime.UtcNow.AddMinutes(1) }
     );
 
-    return Results.Ok(new { Token = newSessionTokenProvider.Token });
+    return Results.Ok(new { SessionToken = newSessionTokenProvider.Token });
 });
 
 app.Run();
