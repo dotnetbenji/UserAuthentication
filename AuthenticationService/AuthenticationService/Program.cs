@@ -1,12 +1,28 @@
+﻿using AuthenticationService.Data.Implementations;
+using AuthenticationService.Data.Interfaces;
+using Dapper;
+using Microsoft.Data.SqlClient;
+using System.Text;
+using System.Security.Cryptography;
+using System.Text;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+builder.Services.AddTransient<INewSessionTokenProvider, NewSessionToken>();
+builder.Services.AddTransient<INewSaltProvider, NewSaltProvider>();
+
+builder.Services.AddScoped<SqlConnection>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var conn = new SqlConnection(config.GetConnectionString("DefaultConnection"));
+    conn.Open();
+    return conn;
+});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -14,28 +30,67 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
+app.MapPost("/create/user", async (CreateUserRequest request, SqlConnection db, INewSaltProvider newSalt) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    int iterations = 100_000;
+    int byteHashLength = 32;
 
-app.MapGet("/weatherforecast", () =>
+    byte[] hash = Rfc2898DeriveBytes.Pbkdf2(
+        Encoding.UTF8.GetBytes(request.Password),
+        newSalt.Salt,
+        iterations,
+        HashAlgorithmName.SHA512,
+        byteHashLength
+    );
+
+    var user = await db.QuerySingleOrDefaultAsync<User>(
+        "INSERT INTO Users (Username, PasswordHash, PasswordSalt, UserCreated) VALUES (@Username, @PasswordHash, @PasswordSalt, @CreationDate)" +
+        "SELECT UserId, Username FROM Users WHERE Username = @Username",
+        new { Username = request.Username, PasswordHash = hash, PasswordSalt = newSalt.Salt, CreationDate = DateTime.UtcNow });
+
+    return Results.Ok(user);
+});
+
+app.MapPost("/login", async (LoginRequest request, SqlConnection db, INewSessionTokenProvider newSessionTokenProvider) =>
 {
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    byte[]? salt = await db.QuerySingleOrDefaultAsync<byte[]>("SELECT PasswordSalt FROM Users WHERE Username = @Username", new { Username = request.Username });
+
+    if(salt is null)
+    {
+        return Results.Problem("User not found");
+    }
+
+    int iterations = 100_000;
+    int byteHashLength = 32;
+
+    byte[] hash = Rfc2898DeriveBytes.Pbkdf2(
+        Encoding.UTF8.GetBytes(request.Password),
+        salt,
+        iterations,
+        HashAlgorithmName.SHA512,
+        byteHashLength
+    );
+
+    var user = await db.QuerySingleOrDefaultAsync<User>(
+        "SELECT UserId, Username FROM Users WHERE Username = @Username AND PasswordHash = @PasswordHash",
+        new { request.Username, PasswordHash = hash });
+
+    if (user == null)
+        return Results.Unauthorized();
+
+    return Results.Ok(user);
+
+    await db.ExecuteAsync(
+        "INSERT INTO Sessions (UserId, Token, ExpiresAt) VALUES (@UserId, @Token, DATEADD(hour, 12, GETUTCDATE()))",
+        new { UserId = user.UserId, Token = newSessionTokenProvider.Token }
+    );
+
+    return Results.Ok(new { Token = newSessionTokenProvider.Token });
+});
 
 app.Run();
 
-internal record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+internal sealed record User(int UserId, string Username);
+
+internal sealed record LoginRequest(string Username, string Password);
+internal sealed record CreateUserRequest(string Username, string Password);
