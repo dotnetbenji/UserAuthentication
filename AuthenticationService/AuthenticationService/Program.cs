@@ -1,9 +1,10 @@
-﻿using AuthenticationService.Data.Implementations;
+﻿using AuthenticationService;
+using AuthenticationService.Data.Implementations;
 using AuthenticationService.Data.Interfaces;
 using Dapper;
 using Microsoft.Data.SqlClient;
-using System.Text;
 using System.Security.Cryptography;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,7 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddTransient<INewSessionTokenProvider, NewSessionToken>();
 builder.Services.AddTransient<INewSaltProvider, NewSaltProvider>();
+builder.Services.AddTransient<ISessionValidator, SessionValidator>();
 
 builder.Services.AddScoped<SqlConnection>(sp =>
 {
@@ -82,10 +84,48 @@ app.MapPost("/login", async (LoginRequest request, SqlConnection db, INewSession
         new { UserId = user.UserId, Token = newSessionTokenProvider.Token, ExpiresAt = DateTime.UtcNow.AddMinutes(1) }
     );
 
-    return Results.Ok(new { SessionToken = newSessionTokenProvider.Token });
+    string encodedToken = Convert.ToBase64String(newSessionTokenProvider.Token);
+    return Results.Ok(new
+    {
+        SessionToken = encodedToken,
+        TokenType = "Bearer"
+    });
+});
+
+app.MapGet("/info", async (HttpContext ctx, ISessionValidator validator) =>
+{
+    var tokenBytes = GetSessionTokenFromRequest(ctx);
+    if (tokenBytes == null)
+        return Results.Unauthorized();
+
+    int? userId = await validator.Validate(new SessionToken(tokenBytes));
+    if (userId is null)
+        return Results.Unauthorized();
+
+    return Results.Ok(userId);
 });
 
 app.Run();
+
+static byte[]? GetSessionTokenFromRequest(HttpContext ctx)
+{
+    var header = ctx.Request.Headers.Authorization.ToString();
+
+    if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        return null;
+
+    string encoded = header["Bearer ".Length..].Trim();
+
+    try
+    {
+        return Convert.FromBase64String(encoded);
+    }
+    catch
+    {
+        return null;
+    }
+}
+
 
 internal sealed record User(int UserId, string Username);
 
