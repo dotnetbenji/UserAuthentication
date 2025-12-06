@@ -3,6 +3,7 @@ using AuthenticationService.Data.Implementations;
 using AuthenticationService.Data.Interfaces;
 using Dapper;
 using Microsoft.Data.SqlClient;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -33,6 +34,14 @@ app.UseHttpsRedirection();
 
 app.MapPost("/create/user", async (CreateUserRequest request, SqlConnection db, INewSaltProvider newSalt) =>
 {
+    var existingUsername = await db.QuerySingleOrDefaultAsync<string>(
+        "SELECT UserId FROM Users WHERE Username = @Username",
+        new { Username = request.Username }
+    );
+
+    if (existingUsername != null)
+        return Results.Conflict("Username not available");
+
     int iterations = 100_000;
     int byteHashLength = 32;
 
@@ -44,19 +53,32 @@ app.MapPost("/create/user", async (CreateUserRequest request, SqlConnection db, 
         byteHashLength
     );
 
-    var user = await db.QuerySingleOrDefaultAsync<User>(
-        "INSERT INTO Users (Username, PasswordHash, PasswordSalt, UserCreated) VALUES (@Username, @PasswordHash, @PasswordSalt, @CreationDate)" +
-        "SELECT UserId, Username FROM Users WHERE Username = @Username",
-        new { Username = request.Username, PasswordHash = hash, PasswordSalt = newSalt.Salt, CreationDate = DateTime.UtcNow });
+    string? username;
+    try
+    {
+        username = await db.QuerySingleAsync<string>(
+            @"INSERT INTO Users (Username, PasswordHash, PasswordSalt, UserCreated)
+              OUTPUT INSERTED.Username
+              VALUES (@Username, @PasswordHash, @PasswordSalt, @CreationDate)",
+            new { Username = request.Username, PasswordHash = hash, PasswordSalt = newSalt.Salt, CreationDate = DateTime.UtcNow }
+        );
+    }
+    catch (SqlException exception)
+    {
+        if(exception.IsUniqueConstraintViolation())
+            return Results.Conflict("Username already exists");
 
-    return Results.Ok(user);
+        return Results.Problem("Failed to create user");
+    }
+
+    return Results.Ok(new { Username = username });
 });
 
 app.MapPost("/login", async (LoginRequest request, SqlConnection db, INewSessionTokenProvider newSessionTokenProvider) =>
 {
     byte[]? salt = await db.QuerySingleOrDefaultAsync<byte[]>("SELECT PasswordSalt FROM Users WHERE Username = @Username", new { Username = request.Username });
 
-    if(salt is null)
+    if (salt is null)
     {
         return Results.Problem("User not found");
     }
@@ -126,6 +148,11 @@ static byte[]? GetSessionTokenFromRequest(HttpContext ctx)
     }
 }
 
+internal static class SqlExceptionExtensions
+{
+    public static bool IsUniqueConstraintViolation(this SqlException exception)
+        => exception.Number == 2627 || exception.Number == 2601;
+}
 
 internal sealed record User(int UserId, string Username);
 
