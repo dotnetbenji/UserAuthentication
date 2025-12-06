@@ -1,0 +1,10 @@
+.vs/
+bin/
+obj/
+.nuget/
+
+# ignore any temp files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
