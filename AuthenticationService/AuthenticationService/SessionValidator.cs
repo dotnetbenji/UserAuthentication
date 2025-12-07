@@ -1,5 +1,4 @@
-﻿using AuthenticationService.Data.Interfaces;
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.SqlClient;
 using StackExchange.Redis;
 

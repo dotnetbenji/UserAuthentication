@@ -9,8 +9,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
-    ConnectionMultiplexer.Connect("localhost:6379"));
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    string? redisConnectionString = builder.Configuration.GetSection("Redis:ConnectionString").Value;
+    if (redisConnectionString is null)
+        throw new Exception("Redis connection string not found in config");
+
+    return ConnectionMultiplexer.Connect(redisConnectionString);
+});
 builder.Services.AddTransient<INewSessionTokenProvider, NewSessionToken>();
 builder.Services.AddTransient<INewSaltProvider, NewSaltProvider>();
 builder.Services.AddTransient<ISessionValidator, RedisSessionValidator>();
