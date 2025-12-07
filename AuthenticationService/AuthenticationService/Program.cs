@@ -12,6 +12,7 @@ builder.Services.AddTransient<INewSessionTokenProvider, NewSessionToken>();
 builder.Services.AddTransient<INewSaltProvider, NewSaltProvider>();
 builder.Services.AddTransient<ISessionValidator, SessionValidator>();
 builder.Services.AddTransient<IPasswordHashResolver, PasswordHashResolver>();
+builder.Services.AddTransient<ISessionResolver, DBSessionResolver>();
 
 builder.Services.AddScoped<SqlConnection>(sp =>
 {
@@ -63,7 +64,11 @@ app.MapPost("/create/user", async (CreateUserRequest request, SqlConnection db, 
     return Results.Ok(new { Username = username });
 });
 
-app.MapPost("/login", async (LoginRequest request, SqlConnection db, IPasswordHashResolver passwordHashResolver, INewSessionTokenProvider newSessionTokenProvider) =>
+app.MapPost("/login", async (
+    LoginRequest request, 
+    SqlConnection db, 
+    IPasswordHashResolver passwordHashResolver, 
+    ISessionResolver sessionResolver) =>
 {
     byte[]? salt = await db.QuerySingleOrDefaultAsync<byte[]>("SELECT PasswordSalt FROM Users WHERE Username = @Username", new { Username = request.Username });
 
@@ -81,15 +86,11 @@ app.MapPost("/login", async (LoginRequest request, SqlConnection db, IPasswordHa
     if (user == null)
         return Results.Unauthorized();
 
-    await db.ExecuteAsync(
-        "INSERT INTO Sessions (UserId, Token, ExpiresAt) VALUES (@UserId, @Token, @ExpiresAt)",
-        new { UserId = user.UserId, Token = newSessionTokenProvider.Token, ExpiresAt = DateTime.UtcNow.AddMinutes(1) }
-    );
+    string encodedSessionToken = await sessionResolver.CreateSession(user.UserId);
 
-    string encodedToken = Convert.ToBase64String(newSessionTokenProvider.Token);
     return Results.Ok(new
     {
-        SessionToken = encodedToken,
+        SessionToken = encodedSessionToken,
         TokenType = "Bearer"
     });
 });
