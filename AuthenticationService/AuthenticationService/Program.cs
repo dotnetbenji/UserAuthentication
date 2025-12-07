@@ -104,7 +104,10 @@ app.MapPost("/login", async (
     });
 });
 
-app.MapGet("/info", async (HttpContext ctx, ISessionValidator sessionValidator) =>
+app.MapGet("/info", async (
+    HttpContext ctx, 
+    ISessionValidator sessionValidator,
+    ISessionResolver sessionResolver) =>
 {
     var tokenString = GetSessionTokenFromRequest(ctx);
     if (tokenString == null)
@@ -114,7 +117,11 @@ app.MapGet("/info", async (HttpContext ctx, ISessionValidator sessionValidator) 
     if (userId is null)
         return Results.Unauthorized();
 
-    return Results.Ok(userId);
+    var sessions = await sessionResolver.GetUserSessions((int)userId);
+
+    return Results.Ok(new { 
+        Sessions = sessions
+    });
 });
 
 app.Run();
