@@ -3,16 +3,19 @@ using AuthenticationService.Data.Implementations;
 using AuthenticationService.Data.Interfaces;
 using Dapper;
 using Microsoft.Data.SqlClient;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 
+builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
+    ConnectionMultiplexer.Connect("localhost:6379"));
 builder.Services.AddTransient<INewSessionTokenProvider, NewSessionToken>();
 builder.Services.AddTransient<INewSaltProvider, NewSaltProvider>();
-builder.Services.AddTransient<ISessionValidator, SessionValidator>();
+builder.Services.AddTransient<ISessionValidator, RedisSessionValidator>();
 builder.Services.AddTransient<IPasswordHashResolver, PasswordHashResolver>();
-builder.Services.AddTransient<ISessionResolver, DBSessionResolver>();
+builder.Services.AddTransient<ISessionResolver, RedisSessionResolver>();
 
 builder.Services.AddScoped<SqlConnection>(sp =>
 {
@@ -97,11 +100,11 @@ app.MapPost("/login", async (
 
 app.MapGet("/info", async (HttpContext ctx, ISessionValidator sessionValidator) =>
 {
-    var tokenBytes = GetSessionTokenFromRequest(ctx);
-    if (tokenBytes == null)
+    var tokenString = GetSessionTokenFromRequest(ctx);
+    if (tokenString == null)
         return Results.Unauthorized();
 
-    int? userId = await sessionValidator.Validate(new SessionToken(tokenBytes));
+    int? userId = await sessionValidator.Validate(new SessionToken(tokenString));
     if (userId is null)
         return Results.Unauthorized();
 
@@ -110,7 +113,7 @@ app.MapGet("/info", async (HttpContext ctx, ISessionValidator sessionValidator) 
 
 app.Run();
 
-static byte[]? GetSessionTokenFromRequest(HttpContext ctx)
+static string? GetSessionTokenFromRequest(HttpContext ctx)
 {
     var header = ctx.Request.Headers.Authorization.ToString();
 
@@ -121,7 +124,7 @@ static byte[]? GetSessionTokenFromRequest(HttpContext ctx)
 
     try
     {
-        return Convert.FromBase64String(encoded);
+        return encoded;
     }
     catch
     {
