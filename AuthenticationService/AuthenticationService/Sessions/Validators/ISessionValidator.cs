@@ -2,5 +2,5 @@
 
 internal interface ISessionValidator
 {
-    Task<int?> Validate(SessionToken token);
+    Task<User?> Validate(SessionToken token);
 }

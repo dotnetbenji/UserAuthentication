@@ -7,7 +7,7 @@ internal sealed record SessionToken(string Token);
 
 internal sealed class DBSessionValidator(SqlConnection _db) : ISessionValidator
 {
-    public async Task<int?> Validate(SessionToken token)
+    public async Task<User?> Validate(SessionToken token)
     {
         byte[] tokenBytes = Convert.FromBase64String(token.Token); // convert to bytes for db check
 
@@ -22,7 +22,12 @@ internal sealed class DBSessionValidator(SqlConnection _db) : ISessionValidator
         if (session.ExpiresAt < DateTime.UtcNow)
             return null;
 
-        return session.UserId;
+        var user = await _db.QuerySingleOrDefaultAsync<User>(
+            "SELECT UserId, Username FROM Users WHERE UserId = @UserId",
+            new { UserId = session.UserId }
+        );
+
+        return user;
     }
 }
 

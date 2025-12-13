@@ -115,11 +115,11 @@ app.MapGet("/info", async (
     if (tokenString == null)
         return Results.Unauthorized();
 
-    int? userId = await sessionValidator.Validate(new SessionToken(tokenString));
-    if (userId is null)
+    User? user = await sessionValidator.Validate(new SessionToken(tokenString));
+    if (user is null)
         return Results.Unauthorized();
 
-    var sessions = await sessionResolver.GetUserSessions((int)userId);
+    var sessions = await sessionResolver.GetUserSessions(user.UserId);
 
     return Results.Ok(new { 
         Sessions = sessions
