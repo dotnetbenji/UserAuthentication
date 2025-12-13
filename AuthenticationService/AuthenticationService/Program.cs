@@ -1,6 +1,8 @@
 ﻿using AuthenticationService;
 using AuthenticationService.Data.Implementations;
 using AuthenticationService.Data.Interfaces;
+using AuthenticationService.Sessions.Resolvers;
+using AuthenticationService.Sessions.SessionValidators;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using StackExchange.Redis;
@@ -95,7 +97,7 @@ app.MapPost("/login", async (
     if (user == null)
         return Results.Unauthorized();
 
-    string encodedSessionToken = await sessionResolver.CreateSession(user.UserId);
+    string encodedSessionToken = await sessionResolver.CreateSession(user);
 
     return Results.Ok(new
     {
