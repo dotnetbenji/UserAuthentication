@@ -2,7 +2,7 @@
 using AuthenticationService.Data.Implementations;
 using AuthenticationService.Data.Interfaces;
 using AuthenticationService.Sessions.Resolvers;
-using AuthenticationService.Sessions.SessionValidators;
+using AuthenticationService.Sessions.Validators;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using StackExchange.Redis;
