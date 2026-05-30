@@ -4,8 +4,11 @@ using AuthenticationService.Data.Interfaces;
 using AuthenticationService.Sessions.Resolvers;
 using AuthenticationService.Sessions.Validators;
 using Dapper;
+using Microsoft.AspNetCore.DataProtection.KeyManagement.Internal;
 using Microsoft.Data.SqlClient;
+using Scalar.AspNetCore;
 using StackExchange.Redis;
+using System.ComponentModel.DataAnnotations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,11 +36,15 @@ builder.Services.AddScoped<SqlConnection>(sp =>
     return conn;
 });
 
+builder.Services.AddValidation();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+
+    app.MapScalarApiReference();
 }
 
 app.UseHttpsRedirection();
@@ -72,8 +79,10 @@ app.MapPost("/create/user", async (CreateUserRequest request, SqlConnection db, 
         return Results.Problem("Failed to create user");
     }
 
-    return Results.Ok(new { Username = username });
-});
+    return Results.Ok(new UserDto(username));
+})
+.Produces<UserDto>(StatusCodes.Status201Created)
+.ProducesValidationProblem();
 
 app.MapPost("/login", async (
     LoginRequest request, 
@@ -153,7 +162,12 @@ internal static class SqlExceptionExtensions
         => exception.Number == 2627 || exception.Number == 2601;
 }
 
+internal sealed record UserDto(string Username);
+
 internal sealed record User(int UserId, string Username);
 
 internal sealed record LoginRequest(string Username, string Password);
-internal sealed record CreateUserRequest(string Username, string Password);
+
+public sealed record CreateUserRequest(
+    [Required, Length(8, 25)] string Username,
+    [Required, MinLength(8)] string Password);
