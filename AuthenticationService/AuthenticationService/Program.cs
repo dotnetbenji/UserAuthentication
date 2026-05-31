@@ -169,5 +169,5 @@ internal sealed record User(int UserId, string Username);
 internal sealed record LoginRequest(string Username, string Password);
 
 public sealed record CreateUserRequest(
-    [Required, Length(8, 25)] string Username,
-    [Required, MinLength(8)] string Password);
+    [property: Required, Length(8, 25)] string Username,
+    [property: Required, MinLength(8)] string Password);
