@@ -4,10 +4,10 @@ using AuthenticationService.Data.Interfaces;
 using AuthenticationService.Sessions.Resolvers;
 using AuthenticationService.Sessions.Validators;
 using Dapper;
-using Microsoft.AspNetCore.DataProtection.KeyManagement.Internal;
 using Microsoft.Data.SqlClient;
 using Scalar.AspNetCore;
 using StackExchange.Redis;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -168,6 +168,16 @@ internal sealed record User(int UserId, string Username);
 
 internal sealed record LoginRequest(string Username, string Password);
 
+/// <summary>
+/// 
+/// </summary>
+/// <param name="Username"></param>
+/// <param name="Password"></param>
 public sealed record CreateUserRequest(
-    [property: Required, Length(8, 25)] string Username,
-    [property: Required, MinLength(8)] string Password);
+    [property: Required, Length(8, 25)] 
+    string Username,
+
+    [property: Required, MinLength(1)] 
+    [RegularExpression(@"^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d]).+$", ErrorMessage = "Password must contain at least one letter, one number, and one symbol.")]
+    string Password
+);
